@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>CrowdWiz Refund Beta</title>
+    <link rel="shortcut icon" href="/static/crowdwiz-burn-icon-150x150.png" type="image/png">
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/gh/ethereum/web3.js/dist/web3.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+</head>
+<body>
+
+<div id="app">
+    <v-app>
+       <v-app-bar
+                app
+                color="white"
+                flat
+        >
+            <v-container class="py-0 fill-height">
+                <v-responsive>
+                    <template
+                    >
+
+                        <v-card
+                                class="d-flex "
+                                flat
+                        >
+                            <v-tooltip
+                                    bottom
+                            >
+                                <template v-slot:activator="{ on, attrs }">
+                                    <v-card
+                                            class="pa-2"
+                                            tile
+                                            v-bind="attrs"
+                                            v-on="on"
+                                    >
+                                        <span
+                                                v-text="metamaskAddress"
+                                                class="d-none d-lg-block"
+                                        ></span>
+                                    </v-card>
+                                </template>
+                                <span>Connected MetaMask Address</span>
+                            </v-tooltip>
+                            <v-tooltip
+                                    v-for="(item, index) in balances"
+                                    :key="item"
+                                    bottom
+                            >
+                                <template v-slot:activator="{ on, attrs }">
+                                    <v-card
+                                            class="pa-2"
+                                            tile
+                                            v-bind="attrs"
+                                            v-on="on"
+                                            v-show="metamaskAddress != null && item.balance !='?' && !reloadingBalances"
+                                    >
+                                        <v-icon
+                                                v-text="item.icon"
+                                                class="text--secondary"
+                                                v-show="item.balance > item.higher_than"
+                                        ></v-icon>
+                                        <v-icon
+                                                v-show="item.balance <= item.higher_than"
+                                                color="red"
+                                        >mdi-information</v-icon>
+                                        <span v-text="item.symbol" class="text--secondary"></span>
+                                        <span v-text="item.balanceRound" class="font-weight-bold"></span>
+                                    </v-card>
+                                </template>
+                                <span v-text="item.tooltip" v-show="item.balance > item.higher_than"></span>
+                                <span v-text="item.error" v-show="item.balance <= item.higher_than"></span>
+                            </v-tooltip>
+                            <v-tooltip
+                                    bottom
+                            >
+                                <template v-slot:activator="{ on, attrs }">
+                                    <v-card
+                                            class="pa-2"
+                                            tile
+                                            v-bind="attrs"
+                                            v-on="on"
+                                            v-show="metamaskAddress != null && !reloadingBalances"
+
+                                    >
+                                        <v-btn icon small @click="checkBalances()"><v-icon>mdi-refresh</v-icon></v-btn>
+                                    </v-card>
+                                </template>
+                                <span>Refresh balances</span>
+                            </v-tooltip>
+                        </v-card>
+                    </template>
+
+                </v-responsive>
+                <v-btn
+                        color="primary"
+                        :disabled="metamaskAddress || connectingToMetaMask"
+                        :loading="connectingToMetaMask"
+                        @click="connectMetaMask()"
+                >
+                    <v-icon>mdi-lan-connect</v-icon>
+                    <span
+                            class="d-none d-sm-block"
+                    ><span
+                            v-show="metamaskAddress===null"
+                    >&nbsp;Connect to MetaMask</span>
+                    <span
+                            v-show="metamaskAddress != null"
+                    >&nbsp;MetaMask Connected</span></span>
+                </v-btn>
+                <v-progress-linear
+                        indeterminate
+                        color="yellow darken-2"
+                        v-show="connectingToMetaMask === true || reloadingBalances === true"
+                ></v-progress-linear>
+                <v-progress-linear
+                        color="red"
+                        rounded
+                        value="100"
+                        v-show="connectingToMetaMask != true && !metamaskAddress && !reloadingBalances"
+                ></v-progress-linear>
+                <v-progress-linear
+                        color="green"
+                        rounded
+                        value="100"
+                        v-show="connectingToMetaMask != true && metamaskAddress && !reloadingBalances"
+                ></v-progress-linear>
+
+            </v-container>
+
+        </v-app-bar>
+
+        <v-main class="grey lighten-3">
+            <v-container>
+                <v-row>
+                    <v-col cols="3">
+                        <v-sheet rounded="lg">
+
+                            <v-list color="transparent"
+
+                            >
+                                <v-list-item-group
+        v-model="selectedItem"
+                                        color="primary"
+                                >
+
+                                    <v-list-item
+                                            v-for="(item, i) in menuItems"
+                                            :key="i"
+                                            @click="handleClick(i)"
+                                            :disabled="disabledFrom <= i"
+                                    >
+                                        <v-list-item-icon>
+                                            <v-icon v-text="item.icon"></v-icon>
+                                        </v-list-item-icon>
+                                        <v-list-item-content>
+                                            <v-list-item-title v-text="item.text" class="d-none d-xs-none d-sm-flex"></v-list-item-title>
+                                        </v-list-item-content>
+                                    </v-list-item>
+                                </v-list-item-group>
+                            </v-list>
+                        </v-sheet>
+                    </v-col>
+                    <v-col>
+                        <v-sheet
+                                min-height="70vh"
+                                rounded="lg"
+                        >
+                            <v-container
+                                    v-show="metamaskAddress === null"
+                            >
+                                <div>
+
+                                    <h1>Refund App</h1>
+                                    <v-spacer>&nbsp;</v-spacer>
+                                    <v-alert border="left"
+                                            colored-border
+                                            type="warning"
+                                            flat>
+                                        You can use this app if you have your WIZ tokens in MetaMask
+                                    extension for Google Chrome.</v-alert>
+                                    <div>Once ready, click the button below:</div>
+                                    <v-spacer>&nbsp;</v-spacer>
+                                    <v-btn
+                                            color="primary"
+                                            :disabled="metamaskAddress || connectingToMetaMask"
+                                            :loading="connectingToMetaMask"
+                                            @click="connectMetaMask()"
+                                    >
+                                        <v-icon>mdi-lan-connect</v-icon>
+                                        <span
+                                                v-show="metamaskAddress===null"
+                                        >&nbsp;Connect to MetaMask</span>
+                                    </v-btn>
+                                    <v-spacer>&nbsp;</v-spacer>
+
+                                    <p>More info is available at <a href="https://crowdwiz.smirnov.com" target="_blank"
+                                    >https://crowdwiz.smirnov.com</a>.</p>
+                                </div>
+                            </v-container>
+                            <v-container
+                                    v-show="menuItems[selectedItem].slug == 'home' && metamaskAddress != null"
+                            >
+                                <div>
+                                    <h1>Crowdwiz Refund App</h1>
+                                    <p>&nbsp;</p>
+                                    <h2>Your wallet</h2>
+                                    <v-simple-table>
+                                        <template v-slot:default>
+                                            <thead>
+                                            <tr>
+                                                <th class="text-left">
+                                                    Parameter
+                                                </th>
+                                                <th class="text-left">
+                                                    Value
+                                                </th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            <tr>
+                                                <td>Connected address</td>
+                                                <td v-text="metamaskAddress"></td>
+                                            </tr>
+                                            <tr>
+                                                <td>Your ETH balance</td>
+                                                <td v-text="balances.ETH.balance"></td>
+                                            </tr>
+                                            <tr>
+                                                <td>Your WIZ balance</td>
+                                                <td v-text="balances.WIZ.balance"></td>
+                                            </tr>
+                                            <tr>
+                                                <td>Amount of WIZ unlocked</td>
+                                                <td v-text="balances.WIZ_approved.balance"></td>
+                                            </tr>
+                                            <tr>
+                                                <td>Amount of WIZ burnt</td>
+                                                <td v-text="burntByAddress"></td>
+                                            </tr>
+                                            </tbody>
+                                        </template>
+                                    </v-simple-table>
+                                    <v-spacer>&nbsp;</v-spacer>
+                                   <h2>General info</h2>
+                                    <v-simple-table>
+                                        <template v-slot:default>
+                                            <thead>
+                                            <tr>
+                                                <th class="text-left">
+                                                    Parameter
+                                                </th>
+                                                <th class="text-left">
+                                                    Value
+                                                </th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            <tr v-show="refundPhase == 1">
+                                                <td>Current Round</td>
+                                                <td>Round A Refund</td>
+                                            </tr>
+                                            <tr v-show="refundPhase == 2">
+                                                <td>Current Round</td>
+                                                <td>Round B Registration</td>
+                                            </tr>
+                                            <tr v-show="refundPhase == 3">
+                                                <td>Current Round</td>
+                                                <td>The refund process is closed</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Next Round</td>
+                                                <td>To be announced.</td>
+                                            </tr>
+                                            <!-- gasPrice -->
+                                            <tr>
+                                                <td>Current Gas Price</td>
+                                                <td><span v-text="gasPriceGwei"></span> Gwei</td>
+                                            </tr>
+                                            </tbody>
+                                        </template>
+                                    </v-simple-table>
+                                    <v-spacer>&nbsp;</v-spacer>
+                                    <h2>Rounds</h2>
+
+
+                                    <p>The refund is done in 2 Rounds.</p>
+                                    <p></p>
+                                    <ul>
+                                        <li><p><strong><a @click="selectMenuItem('round-a')"
+                                        >Round A</a></strong>. You get approximately 0.0002373 ETH for every WIZ token
+                                            you refund. This round lasts a long time, you can exchane at any time
+                                            as long as the round is on. The refund is instant.
+                                        </p></li>
+                                        <li><strong><a @click="selectMenuItem('round-b')"
+                                        >Round B</a>.</strong> Register for one-time final mass distribution of
+                                            ETH that weren't disributed in the Round A. The registration period is only
+                                            one month.</li>
+                                    </ul>
+                                    <p></p>
+
+                                </div>
+                            </v-container>
+                            <v-container
+                                    v-show="metamaskAddress != null && menuItems[selectedItem].slug == 'unlock' && balances.WIZ.balance > 0"
+                            >
+                                <div>
+
+                                    <h1>Unlock WIZ tokens</h1>
+                                    <v-divider></v-divider><p></p>
+                                    <p>This form will help you call <code>approve()</code> method of WIZ token.
+                                    It will approve the refund contract to withdraw the tokens from your wallet.
+                                    </p>
+                                </div>
+                                    <p></p>
+                                    <v-card
+                                            outlined
+                                            :disabled="connectingToMetaMask || reloadingBalances"
+                                            :loading="approveSubmited"
+                                    >
+                                          <v-card-title>
+                                              Unlock WIZ tokens
+                                          </v-card-title>
+                                          <v-card-subtitle
+                                                  v-show="approveTransactionHash != null"
+                                          >
+                                              <a :href="'https://etherscan.io/tx/' + approveTransactionHash" v-text="approveTransactionHash" target="_blank"></a>
+                                          </v-card-subtitle>
+                                        <v-divider></v-divider>
+                                        <template>
+                                            <v-banner
+                                                    single-line
+                                                    color="success"
+                                                    transition="v-slide-y-transition"
+                                                    v-show="!approveSuccessHide"
+                                            >
+                                                <v-icon
+                                                        slot="icon"
+                                                        size="36"
+                                                >
+                                                    mdi-check-circle-outline
+                                                </v-icon>
+                                                Congrats! The transaction was confirmed. <a @click="selectMenuItem('round-a')"
+                                            >Continue</a> to the refund.
+                                                <template>
+                                                    <v-btn
+                                                            color="primary"
+                                                            icon
+                                                            @click="approveSuccessHide=true"
+                                                    >
+                                                              <v-icon dark>mdi-close</v-icon>
+                                                    </v-btn>
+                                                </template>
+                                            </v-banner>
+                                        </template>
+                                        <template>
+                                            <v-banner
+                                                    single-line
+                                                    color="error"
+                                                    transition="v-slide-y-transition"
+                                                    v-show="!approveErrorHide"
+                                            >
+                                                <v-icon
+                                                        slot="icon"
+                                                        size="36"
+                                                >
+                                                    mdi-emoticon-confused-outline
+                                                </v-icon>
+                                                Transaction returned an error:
+                                                <span v-text="approveErrorMessage"></span>
+                                                <template v-slot:actions>
+                                                    <v-btn
+                                                            color="primary"
+                                                            icon
+                                                            @click="approveErrorHide=true"
+                                                    >
+                                                              <v-icon dark>mdi-close</v-icon>
+                                                    </v-btn>
+                                                </template>
+                                            </v-banner>
+                                        </template>
+                                        <template>
+                                            <v-banner
+                                                    single-line
+                                                    color="warning"
+                                                    transition="v-slide-y-transition"
+                                                    v-show="!approveWarningHide && approveSuccessHide"
+                                            >
+                                                <v-icon
+                                                        slot="icon"
+                                                        size="36"
+                                                >
+                                                    mdi-clock-alert-outline
+                                                </v-icon>
+                                                If transaction is taking too long, re-submit it with higher gasPrice.
+                                                <template v-slot:actions>
+                                                    <v-btn
+                                                            color="primary"
+                                                            icon
+                                                            @click="approveWarningHide=true"
+                                                    >
+                                                              <v-icon dark>mdi-close</v-icon>
+                                                    </v-btn>
+                                                </template>
+                                            </v-banner>
+                                        </template>
+                                        <v-container
+                                        >
+                                            <v-row>
+                                                <v-col cols="12"
+                                                       md="7"
+                                                >
+                                                    <v-subheader class="pl-0">
+                                                        Amount of WIZ tokens to unlock
+                                                    </v-subheader>
+                                                    <v-text-field
+                                                            type="number"
+                                                            v-model="tokensToUnlock"
+                                                    >
+                                                    </v-text-field>
+                                                </v-col>
+                                                <v-col cols="12"
+                                                       md="7"
+                                                >
+                                                    <v-subheader class="pl-0">
+                                                        Gas Price (GWei)
+                                                    </v-subheader>
+                                                    <v-slider
+                                                            hint="Im a hint"
+                                                            max="300"
+                                                            min="1"
+                                                            v-model="gasPriceGwei"
+                                                            thumb-label="always"
+                                                    ></v-slider>
+
+                                                </v-col>
+                                            </v-row>
+                                            <v-row>
+                                                <v-col>
+                                                    <v-btn
+                                                            class="mr-4"
+                                                            type="submit"
+                                                            :disabled="approveSubmited || tokensToUnlock <= 0"
+                                                            @click="sendApprove()"
+                                                    >
+                                                        <span>Unlock WIZ</span>
+                                                    </v-btn>
+                                                    <v-btn
+                                                            class="mr-4"
+                                                            type="submit"
+                                                            @click="sendApprove()"
+                                                            v-show="approveSubmited && approveTimedout"
+                                                    >
+                                                        <span>Update gas</span>
+                                                    </v-btn>
+                                                </v-col>
+                                            </v-row>
+
+                                        </v-container>
+                                    </v-card>
+
+
+                            </v-container>
+                            <v-container
+                                    v-show="!(metamaskAddress === null) && menuItems[selectedItem].slug == 'unlock' && !(balances.WIZ.balance > 0)"
+                            >
+                                <div>
+
+                                    <h1>No WIZ tokens</h1>
+                                    <v-divider></v-divider><p></p>
+                                    <v-alert
+                                            border="left"
+                                            colored-border
+                                            type="warning"
+                                            flat
+                                    >
+                                        It looks like your address doesn't have any WIZ tokens on balance.
+                                        Wrong address?
+                                    </v-alert>
+                                    <v-btn
+                                            x-large
+                                            @click="checkBalances()"
+                                    >Refresh Balances</v-btn>
+
+                                </div>
+                            </v-container>
+                            <v-container
+                                    v-show="!(metamaskAddress === null) && menuItems[selectedItem].slug === 'round-a' "
+                            >
+
+                                <h1>Round A Refund</h1>
+                                Use below form to execute the round A refund. It is done in two steps. First step is to
+                                unlock the tokens, and second is the actual refund.
+                                <p>&nbsp;</p>
+                                    <v-alert
+                                                border="left"
+                                                colored-border
+                                                type="error"
+                                                flat
+                                                v-show=" refundPhase > 1 "
+                                    >
+                                        Round A is over. Perhaps you are not too late for <a
+                                            @click="selectMenuItem('round-b')">Round B</a> registration.
+                                    </v-alert>
+                                <contract-call-form
+                                        title="1. Unlock WIZ tokens."
+                                        gas="64000"
+                                        button="Unlock WIZ"
+                                        :disable="metamaskAddress === null || balances.WIZ.balance == 0 || balances.WIZ.balance == balances.WIZ_approved.balance || reloadingBalances || refundPhase != 1"
+                                        ref="approve"
+                                        name="approve"
+                                >
+                                    <v-alert
+                                                border="left"
+                                                colored-border
+                                                type="error"
+                                                flat
+                                                v-show=" !(balances.WIZ.balance > 0) "
+                                    >
+                                            It looks like your address doesn't have any WIZ tokens on balance.
+                                    </v-alert>
+                                    <v-alert
+                                                border="left"
+                                                colored-border
+                                                type="error"
+                                                flat
+                                                v-show=" balances.WIZ.balance > 0 && balances.WIZ.balance == balances.WIZ_approved.balance"
+                                    >
+                                            You have unlocked all the WIZ tokens in your possession. You can proceed to refund.
+                                    </v-alert>
+                                    This form will unlock the WIZ tokens for the refund contract to access them. This
+                                    only unlocks the WIZ tokens for the refund contract, your tokens are safe. The <a
+                                    href="https://etherscan.io/address/0x581779a782d77d8e7667bedd1f50dbf2f0d700b7#code"
+                                    target="_blank">refund contract</a> has a verified code with Etherscan and audited
+                                    by a security company.
+                                    <v-subheader class="pl-0">
+                                        Amount of WIZ tokens to unlock
+                                    </v-subheader>
+                                    <v-row>
+                                        <v-col cols="12" md="10">
+                                            <v-text-field
+                                                type="number"
+                                                v-model="tokensToUnlock"
+                                            >
+                                            </v-text-field>
+                                        </v-col>
+                                        <v-col cols="12" md="2">
+                                            <v-btn
+                                                    @click="tokensToUnlock = balances.WIZ.balance - balances.WIZ_approved.balance"
+                                            >MAX
+                                            </v-btn>
+                                        </v-col>
+                                    </v-row>
+                                </contract-call-form>
+                                <v-spacer>&nbsp;</v-spacer>
+                                <contract-call-form
+                                        title="2. Refund the Unlocked WIZ."
+                                        gas="160000"
+                                        :disable="metamaskAddress === null || balances.WIZ_approved.balance == 0 || reloadingBalances || refundPhase != 1"
+                                        button="Refund"
+                                        ref="refund"
+                                        name="refund"
+                                >
+                                    <v-alert
+                                                border="left"
+                                                colored-border
+                                                type="error"
+                                                flat
+                                                v-show="balances.WIZ_approved.balance == 0"
+                                    >
+                                            You need to unlock the WIZ tokens before you can proceed with the refund.
+                                    </v-alert>
+                                    And this form will use refund contract to exchange unlocked WIZ for ETH. All the
+                                    unlocked WIZ tokens will be burnt at this time.
+                                </contract-call-form>
+                            </v-container>
+
+                            <v-container
+                                    v-show="!(metamaskAddress === null) && menuItems[selectedItem].slug === 'round-b' "
+                            >
+
+                                <h1>Round B Registration</h1>
+                                <v-spacer>&nbsp;</v-spacer>
+                                Here you can register for the Round B refund. Only addresses that participated in
+                                the Round A are eligible for the registration.
+                                <p>&nbsp;</p>
+                                    <v-alert
+                                                border="left"
+                                                colored-border
+                                                type="error"
+                                                flat
+                                                v-show=" refundPhase < 2 "
+                                    >
+                                        Round B registration is not open yet.
+                                        Please subsribe to <a
+                                            href="https://t.me/CrowdwizRefund">https://t.me/CrowdwizRefund</a> to keep
+                                        updates on the registration schedule.
+                                    </v-alert>
+                                    <v-alert
+                                                border="left"
+                                                colored-border
+                                                type="error"
+                                                flat
+                                                v-show=" refundPhase > 2 "
+                                    >
+                                        Round B registration is closed.
+                                    </v-alert>
+                            </v-container>
+
+                        </v-sheet>
+                    </v-col>
+                </v-row>
+            </v-container>
+        </v-main>
+    </v-app>
+</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+  <script>
+    var baseContractForm = {
+        data: function () {
+            return {
+                timedOut: false,
+                transactionHashes: null,
+                errorHide:true,
+                successHide:true,
+                warningHide:true,
+                errorMessage: '',
+                contractAddress: null,
+                contractMethod: null,
+                count: 0,
+                gasPriceGwei: 100,
+                submitted: false,
+            }
+        },
+        props: ['title', 'gas', 'disable', 'button', 'name'],
+        computed: {
+                    transactionFee: function () {
+                        var ethFee = this.$root.$data.web3.utils.fromWei(
+                            (this.gas *
+                                    this.$root.$data.web3.utils.toWei(this.gasPriceGwei.toString(),'gwei')).toString(),
+                                    'ether'
+                            ).toString();
+                        return  ethFee + ' ETH ('
+                            +   (Math.round(100 * ethFee * this.$root.$data.etherscanStats.ethprice.result.ethusd)/100).toString() + ' USD)';
+                    },
+                    notEnoughETHtoPayTheFee: function () {
+                        var ethFee = this.$root.$data.web3.utils.fromWei(
+                            (this.gas *
+                                    this.$root.$data.web3.utils.toWei(this.gasPriceGwei.toString(),'gwei')).toString(),
+                                    'ether'
+                            );
+                        return  ethFee > this.$root.$data.balances.ETH.balance;
+                    },
+                    getFeeColor: function() {
+                        if (this.gasPriceGwei < this.$root.etherscanStats.oracle.result.SafeGasPrice ||
+                            this.gasPriceGwei > this.$root.etherscanStats.oracle.result.FastGasPrice) {
+                            return "red";
+                        }
+                        return "green";
+                    }
+        },
+        methods: {
+                    autoFix: function() {
+                        this.$root.contractMethods[this.name].call(this.$root).estimateGas(
+                            {from: this.$root.web3.utils.toChecksumAddress(this.$root.metamaskAddress)}
+                        ).then(
+                            (gas)=>{
+                                this.gas = gas;
+                            })
+                        .catch((err) => {
+                        });
+                        fetch('/etherscan/gas.json'
+                        ).then(data => {
+                            return data.json();
+                        }).then(json => {
+                            if (json.ethprice.message == "OK") {
+                                this.$root.etherscanStats.ethprice = json.ethprice;
+                            }
+                            if (json.oracle.message == "OK") {
+                                this.$root.etherscanStats.oracle = json.oracle;
+                                this.gasPriceGwei = this.$root.etherscanStats.oracle.result.ProposeGasPrice;
+                            }
+                        });
+
+                    }
+        },
+        template: `
+            <v-card
+                :disabled="disable"
+            >
+                <v-card-title>
+                    {{title}}
+                </v-card-title>
+                <v-container
+                >
+                    <v-row>
+                        <v-col>
+                            <slot></slot>
+                        </v-col>
+                    </v-row>
+  <v-expansion-panels
+    flat
+  >
+    <v-expansion-panel>
+      <v-expansion-panel-header
+      >Transaction Fee: {{ transactionFee }}</v-expansion-panel-header>
+      <v-expansion-panel-content>
+                    <v-row>
+                    <v-col cols="12" md="6">
+                        <v-slider
+                            hint="{gasPriceGwei} GWei"
+                            max="400"
+                            min="1"
+                            :thumb-color="getFeeColor"
+                            v-model="gasPriceGwei"
+                            label="Gas Price"
+                            >
+                        </v-slider>
+                        <v-chip link outlined v-show="$root.etherscanStats.oracle.result.SafeGasPrice>0" @click="gasPriceGwei=$root.etherscanStats.oracle.result.SafeGasPrice">Safe</v-chip>
+                        <v-chip link outlined v-show="$root.etherscanStats.oracle.result.ProposeGasPrice>0" @click="gasPriceGwei=$root.etherscanStats.oracle.result.ProposeGasPrice">Best</v-chip>
+                        <v-chip link outlined v-show="$root.etherscanStats.oracle.result.FastGasPrice>0"  @click="gasPriceGwei=$root.etherscanStats.oracle.result.FastGasPrice">Fast</v-chip>
+                    </v-col>
+                        <v-col
+                                cols="12"
+                                md="2"
+                        >
+                            <v-text-field
+                                type="gasPriceGwei"
+                                v-model="gasPriceGwei"
+                                disabled
+                                label="Gas Price (Gwei)"
+
+                            >
+                            </v-text-field>
+                    </v-col>
+                        <v-col
+                                cols="12"
+                                md="3"
+                        >
+                            <v-text-field
+                                type="number"
+                                v-model="gas"
+                                label="Gas Limit"
+                            >
+                            </v-text-field>
+                        </v-col>
+                        <v-col
+                                cols="12"
+                                md="1"
+                        >
+                        <v-tooltip top>
+                            <template v-slot:activator="{ on, attrs }">
+                            <v-btn
+                                icon
+                                @click="autoFix"
+                                v-bind="attrs"
+                                v-on="on"
+                            >
+                            <v-icon>mdi-auto-fix</v-icon>
+                            </v-btn>
+
+                            </template>
+                            <span>Estimate gas needed for transaction</span>
+                        </v-tooltip>
+                        </v-col>
+
+                    </v-row>      </v-expansion-panel-content>
+    </v-expansion-panel>
+  </v-expansion-panels>
+
+                    <v-row>
+                        <v-col>
+                            <div>
+                                <v-expand-transition>
+                                    <v-alert
+                                                border="left"
+                                                colored-border
+                                                type="error"
+                                                flat
+                                                v-show="notEnoughETHtoPayTheFee"
+                                    >
+                                            There is not enough ETH on balance to pay the transaction fee.
+                                    </v-alert>
+                                </v-expand-transition>
+                                <v-btn
+                                    class="mr-4"
+                                        color="primary"
+                                        type="submit"
+                                        :disabled="submitted || notEnoughETHtoPayTheFee"
+                                        @click=""
+                                    >
+                                        <span>{{ button }}</span>
+                                    </v-btn>
+                                <v-btn
+                                    class="mr-4" type="submit" @click="sendApprove()" v-show="submitted == true"
+                                >
+                                    <span>Update gas</span>
+                                </v-btn>
+                            </div>
+                        </v-col>
+                    </v-row>
+                </v-container>
+            </v-card>
+        `,
+
+    };
+    var vue = new Vue({
+        el: '#app',
+        vuetify: new Vuetify(),
+        mounted: function () {
+            console.log('page loaded');
+        },
+        components: {
+            'contract-call-form': baseContractForm
+        },
+        theme: {
+            themes: {
+                light: {
+                    primary: '#3f51b5',
+                    secondary: '#b0bec5',
+                    accent: '#8c9eff',
+                    error: '#b71c1c',
+                },
+            },
+        },
+        data: () => ({
+          selectedItem: 0,
+          disabledFrom: 3,
+          connectingToMetaMask: false,
+          web3: null,
+          metamaskAddress: null,
+          userBalance: null,
+          menuItems: [
+            { text: 'Home', icon: 'mdi-home-outline', slug: 'home', enabled: true},
+            { text: 'Round A', icon: 'mdi-swap-horizontal', slug: 'round-a', enabled: false },
+            { text: 'Round B', icon: 'mdi-swap-horizontal', slug: 'round-b', enabled: false },
+          ],
+          tokensToUnlock: 1,
+          gasPriceGwei: 60,
+          ethPriceUSD: 1700,
+          approveEstimatedGas: 60000,
+          refundEstimatedGas: 120000,
+          reloadingBalances: false,
+          lastApproveTx: null,
+          etherscanStats: {
+              "ethprice": {
+                  "message": "OK",
+                  "result": {
+                      "ethbtc": "0.03033",
+                      "ethbtc_timestamp": "1617011405",
+                      "ethusd": "1761.25",
+                      "ethusd_timestamp": "1617011407"
+                  },
+                  "status": "1"
+              },
+              "oracle": {
+                  "message": "OK",
+                  "result": {
+                      "FastGasPrice": "136",
+                      "LastBlock": "12133410",
+                      "ProposeGasPrice": "114",
+                      "SafeGasPrice": "103"
+                  },
+                  "status": "1"
+              }
+          },
+          approveSubmited: false,
+          approveTimedout: false,
+          approveTransactionHash: null,
+          approveErrorHide:true,
+          approveSuccessHide:true,
+          approveWarningHide:true,
+          burntByAddress: '?',
+          refundPhase: 0,
+          approveErrorMessage: '',
+          balances: {
+              'ETH': {balance: '?', balanceRound:0, symbol: 'ETH',
+                  icon: 'mdi-coins',
+                  tooltip: 'ETH balance',
+                  higher_than: 0.001,
+                  error: 'The balance may not be sufficient to pay transaction fees.'
+              },
+              'WIZ': {balance: '?', balanceRound:0, symbol: 'WIZ',
+                  icon: 'mdi-lock-outline',
+                  tooltip: 'WIZ balance',
+                  higher_than: 0,
+                  error: 'You don\'t have any WIZ on this address.'
+              },
+              'WIZ_approved': {balance: '?', balanceRound:0, symbol: 'WIZ',
+                  icon: 'mdi-lock-open-outline',
+                  tooltip: 'WIZ balance unlocked',
+                  higher_than: 0,
+                  error: 'You must unlock some WIZ before you can refund.'
+              },
+          },
+          contractMethods: {
+                approve: {
+                    call: function(root) {
+                        var contract = new root.web3.eth.Contract(
+                            [{"constant":true,"inputs":[],"name":"name","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_spender","type":"address"},{"name":"_value","type":"uint256"}],"name":"approve","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"totalSupply","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_from","type":"address"},{"name":"_to","type":"address"},{"name":"_value","type":"uint256"}],"name":"transferFrom","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_to","type":"address"},{"name":"_amount","type":"uint256"}],"name":"mint","outputs":[{"name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"isStarted","outputs":[{"name":"","type":"bool"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_spender","type":"address"},{"name":"_currentValue","type":"uint256"},{"name":"_value","type":"uint256"}],"name":"approve_fixed","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[],"name":"emergencyStop","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[],"name":"acceptOwnership","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"owner","outputs":[{"name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"symbol","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_to","type":"address"},{"name":"_value","type":"uint256"}],"name":"transfer","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[],"name":"start","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"getTotalSupply","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"crowdsaleMinter","outputs":[{"name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[{"name":"_owner","type":"address"},{"name":"_spender","type":"address"}],"name":"allowance","outputs":[{"name":"remaining","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"inputs":[],"payable":false,"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"name":"_from","type":"address"},{"indexed":true,"name":"_to","type":"address"},{"indexed":false,"name":"_value","type":"uint256"}],"name":"Transfer","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"name":"_owner","type":"address"},{"indexed":true,"name":"_spender","type":"address"},{"indexed":false,"name":"_value","type":"uint256"}],"name":"Approval","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"name":"_from","type":"address"},{"indexed":true,"name":"_to","type":"address"}],"name":"OwnershipTransferred","type":"event"}],
+                            root.contractMethods.approve.contractAddress(root)
+                        );
+                        return contract.methods.approve(root.contractMethods.approve.contractAddress(root), root.web3.utils.toWei(root.tokensToUnlock.toString(), 'ether'));
+                    },
+                    contractAddress: function (root) {
+                        if (root.networkVersion == 0x01) {
+                            return root.web3.utils.toChecksumAddress('0x2f9b6779c37df5707249eeb3734bbfc94763fbe2');
+                        } else if (root.networkVersion == 0x03) {
+                            return root.web3.utils.toChecksumAddress('0x3afac79af35865d40d74173a1ffeede947966151');
+                        }
+                    },
+                    data: {}
+                },
+                refund: {
+                    call: function(root) {
+                        var contract = new root.web3.eth.Contract(
+                            [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"allowed_value","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"topay_value","type":"uint256"},{"indexed":true,"internalType":"address","name":"sc_address","type":"address"},{"indexed":false,"internalType":"uint256","name":"sc_balance","type":"uint256"}],"name":"BurningRequiredValues","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":true,"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"Confirmation","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Deposit","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"Execution","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"ExecutionFailure","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"wallet","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"LogRefundValue","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"wallet","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"LogWithdrawETH","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"required","type":"uint256"}],"name":"RequirementChange","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":true,"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"Revocation","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"signRoleAddress","type":"address"}],"name":"SignRoleAddition","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"signRoleAddress","type":"address"}],"name":"SignRoleRemoval","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"Submission","type":"event"},{"inputs":[],"name":"MAX_OWNER_COUNT","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"REQUIRED_CONFIRMATIONS_COUNT","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"signRoleAddress","type":"address"}],"name":"checkSignRoleExists","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"start_index","type":"uint256"},{"internalType":"uint256","name":"end_index","type":"uint256"}],"name":"clearFinalWithdrawData","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"confirmTransaction","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"},{"internalType":"address","name":"","type":"address"}],"name":"confirmations","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"final_distribution_balance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"finishCurrentPhase","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"participant","type":"address"}],"name":"forceRegister","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"holder","type":"address"}],"name":"getBurntAmountByAddress","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getBurntAmountTotal","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getCurrentPhaseIndex","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getExchangeRate","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getNumberOfParticipants","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"index","type":"uint256"}],"name":"getParticipantAddressByIndex","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getPhaseName","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"isConfirmed","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_wallet","type":"address"}],"name":"isFinalWithdraw","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"isOwner","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"participant","type":"address"}],"name":"isRegistration","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"isSignRole","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"phases","outputs":[{"internalType":"string","name":"NAME","type":"string"},{"internalType":"bool","name":"IS_STARTED","type":"bool"},{"internalType":"bool","name":"IS_FINISHED","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"refund","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"participant","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"refundTokensTransferredDirectly","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"register","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"required","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"revertPhase","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"signRoleAddresses","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"start_index","type":"uint256"},{"internalType":"uint256","name":"end_index","type":"uint256"}],"name":"startFinalDistribution","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"startNextPhase","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"start_index","type":"uint256"},{"internalType":"uint256","name":"end_index","type":"uint256"}],"name":"submitTx_clearFinalWithdrawData","outputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"participant","type":"address"}],"name":"submitTx_forceRegister","outputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"participant","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"submitTx_refundTokensTransferredDirectly","outputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"submitTx_revertPhase","outputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"recipient","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"submitTx_withdrawETH","outputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"sum_burnt_amount_registered","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"token","outputs":[{"internalType":"contract Token_interface","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"transactionCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"transactions","outputs":[{"internalType":"address","name":"destination","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"},{"internalType":"bool","name":"executed","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"recipient","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"withdrawETH","outputs":[],"stateMutability":"nonpayable","type":"function"},{"stateMutability":"payable","type":"receive"}],
+                            root.contractMethods.refund.contractAddress(root)
+                        );
+                        return contract.methods.refund();
+                    },
+                    contractAddress: function (root) {
+                        if (root.networkVersion == 0x01) {
+                            return '0x581779a782d77d8e7667bedd1f50dbf2f0d700b7';
+                        } else if (root.networkVersion == 0x03) {
+                            return '0x785940AD1d44f6426a1F2e05b49845Cf13E7dd6c';
+                        }
+                    },
+                    data: {}
+                }
+          },
+          tokenRules: [
+              v => v > this.parent.balances.WIZ.balance || 'Not enough WIZ on balance'
+          ]
+        }),
+        methods: {
+            selectMenuItem(slug) {
+                for (item in this.menuItems) {
+                    if (this.menuItems[item].slug == slug) {
+                        this.selectedItem = parseInt(item);
+                    }
+                }
+            },
+            handleClick(index) {
+                //this.menuItems[index].click.call(this)
+                console.log(this.menuItems[index].text);
+            },
+            connectMetaMask() {
+                async function connect() {
+                    // Wait for loading completion to avoid race conditions with web3 injection timing.
+                    if (window.ethereum) {
+                        const web3 = new Web3(window.ethereum);
+                        try {
+                            // Request account access if needed
+                            await window.ethereum.enable();
+                            // Acccounts now exposed
+                            return web3;
+                        } catch (error) {
+                            console.error(error);
+                        }
+                    }
+                    // Legacy dapp browsers...
+                    else if (window.web3) {
+                        // Use Mist/MetaMask's provider.
+                        const web3 = window.web3;
+                        console.log('Injected web3 detected.');
+                        return web3;
+                    }
+                    // Fallback to localhost; use dev console port by default...
+                    // else {
+                    //    const provider = new Web3.providers.HttpProvider('http://127.0.0.1:9545');
+                    //    const web3 = new Web3(provider);
+                    //    console.log('No web3 instance injected, using Local web3.');
+                    //    return web3;
+                    // }
+                }
+                this.connectingToMetaMask = true;
+                console.log('connecting to metamask');
+                connect().then( (w3) => {
+                    this.web3 = w3;
+                    this.connectingToMetaMask = false;
+                    this.networkVersion = ethereum.networkVersion;
+                    if (this.networkVersion == 1) {
+                        this.wizAddress = '0x2f9b6779c37df5707249eeb3734bbfc94763fbe2';
+                        this.refundAddress = '0x581779a782d77d8e7667bedd1f50dbf2f0d700b7';
+                    } else {
+                        console.log('network id');
+                        console.log(this.networkVersion);
+                        this.wizAddress = '0x3afac79af35865d40d74173a1ffeede947966151';
+                        this.refundAddress = '0x785940AD1d44f6426a1F2e05b49845Cf13E7dd6c';
+                    }
+                    ethereum.on('accountsChanged', (accounts) => {
+                        console.log('accountsChanged');
+                        this.checkBalances();
+                    });
+                    ethereum.on('chainChanged', (chainId) => {
+                        console.log('chainChanged');
+                        this.networkVersion = chainId;
+                        if (this.networkVersion == 1) {
+                            this.wizAddress = '0x2f9b6779c37df5707249eeb3734bbfc94763fbe2';
+                            this.refundAddress = '0x581779a782d77d8e7667bedd1f50dbf2f0d700b7';
+                        } else {
+                            console.log('network id');
+                            console.log(this.networkVersion);
+                            this.wizAddress = '0x3afac79af35865d40d74173a1ffeede947966151';
+                            this.refundAddress = '0x785940AD1d44f6426a1F2e05b49845Cf13E7dd6c';
+                        }
+                        this.checkBalances();
+                    });
+                    this.checkBalances();
+                }).catch((error) => {
+                    this.web3 = null;
+                    this.metamaskAddress = null;
+                    console.log('failed to connect to metamask');
+                    console.log(error);
+                    this.connectingToMetaMask = false;
+                });
+            },
+            checkBalances () {
+                this.reloadingBalances = true;
+                this.metamaskAddress = ethereum.selectedAddress;
+                this.wizContract = new this.web3.eth.Contract(
+                    [{"constant":true,"inputs":[],"name":"name","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_spender","type":"address"},{"name":"_value","type":"uint256"}],"name":"approve","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"totalSupply","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_from","type":"address"},{"name":"_to","type":"address"},{"name":"_value","type":"uint256"}],"name":"transferFrom","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_to","type":"address"},{"name":"_amount","type":"uint256"}],"name":"mint","outputs":[{"name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"isStarted","outputs":[{"name":"","type":"bool"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_spender","type":"address"},{"name":"_currentValue","type":"uint256"},{"name":"_value","type":"uint256"}],"name":"approve_fixed","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[],"name":"emergencyStop","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[],"name":"acceptOwnership","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"owner","outputs":[{"name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"symbol","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_to","type":"address"},{"name":"_value","type":"uint256"}],"name":"transfer","outputs":[{"name":"success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[],"name":"start","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"getTotalSupply","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"crowdsaleMinter","outputs":[{"name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[{"name":"_owner","type":"address"},{"name":"_spender","type":"address"}],"name":"allowance","outputs":[{"name":"remaining","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"inputs":[],"payable":false,"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"name":"_from","type":"address"},{"indexed":true,"name":"_to","type":"address"},{"indexed":false,"name":"_value","type":"uint256"}],"name":"Transfer","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"name":"_owner","type":"address"},{"indexed":true,"name":"_spender","type":"address"},{"indexed":false,"name":"_value","type":"uint256"}],"name":"Approval","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"name":"_from","type":"address"},{"indexed":true,"name":"_to","type":"address"}],"name":"OwnershipTransferred","type":"event"}],
+                    this.wizAddress
+                );
+                this.refundContract = new this.web3.eth.Contract(
+                    [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"allowed_value","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"topay_value","type":"uint256"},{"indexed":true,"internalType":"address","name":"sc_address","type":"address"},{"indexed":false,"internalType":"uint256","name":"sc_balance","type":"uint256"}],"name":"BurningRequiredValues","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":true,"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"Confirmation","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Deposit","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"Execution","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"ExecutionFailure","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"wallet","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"LogRefundValue","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"wallet","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"LogWithdrawETH","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"required","type":"uint256"}],"name":"RequirementChange","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":true,"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"Revocation","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"signRoleAddress","type":"address"}],"name":"SignRoleAddition","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"signRoleAddress","type":"address"}],"name":"SignRoleRemoval","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"Submission","type":"event"},{"inputs":[],"name":"MAX_OWNER_COUNT","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"REQUIRED_CONFIRMATIONS_COUNT","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"signRoleAddress","type":"address"}],"name":"checkSignRoleExists","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"start_index","type":"uint256"},{"internalType":"uint256","name":"end_index","type":"uint256"}],"name":"clearFinalWithdrawData","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"confirmTransaction","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"},{"internalType":"address","name":"","type":"address"}],"name":"confirmations","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"final_distribution_balance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"finishCurrentPhase","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"participant","type":"address"}],"name":"forceRegister","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"holder","type":"address"}],"name":"getBurntAmountByAddress","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getBurntAmountTotal","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getCurrentPhaseIndex","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getExchangeRate","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getNumberOfParticipants","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"index","type":"uint256"}],"name":"getParticipantAddressByIndex","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getPhaseName","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"name":"isConfirmed","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_wallet","type":"address"}],"name":"isFinalWithdraw","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"isOwner","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"participant","type":"address"}],"name":"isRegistration","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"isSignRole","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"phases","outputs":[{"internalType":"string","name":"NAME","type":"string"},{"internalType":"bool","name":"IS_STARTED","type":"bool"},{"internalType":"bool","name":"IS_FINISHED","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"refund","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"participant","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"refundTokensTransferredDirectly","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"register","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"required","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"revertPhase","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"signRoleAddresses","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"start_index","type":"uint256"},{"internalType":"uint256","name":"end_index","type":"uint256"}],"name":"startFinalDistribution","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"startNextPhase","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"start_index","type":"uint256"},{"internalType":"uint256","name":"end_index","type":"uint256"}],"name":"submitTx_clearFinalWithdrawData","outputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"participant","type":"address"}],"name":"submitTx_forceRegister","outputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"participant","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"submitTx_refundTokensTransferredDirectly","outputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"submitTx_revertPhase","outputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"recipient","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"submitTx_withdrawETH","outputs":[{"internalType":"uint256","name":"transactionId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"sum_burnt_amount_registered","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"token","outputs":[{"internalType":"contract Token_interface","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"transactionCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"transactions","outputs":[{"internalType":"address","name":"destination","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"},{"internalType":"bool","name":"executed","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address payable","name":"recipient","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"withdrawETH","outputs":[],"stateMutability":"nonpayable","type":"function"},{"stateMutability":"payable","type":"receive"}],
+                    this.refundAddress
+                );
+                var p1 = this.web3.eth.getBalance(this.metamaskAddress, (err, balance) => {
+                    if (err) {
+                        this.balances.ETH.balance = '?';
+                    } else {
+                        this.balances.ETH.balance = this.web3.utils.fromWei(balance, "ether");
+                        this.balances.ETH.balanceRound = Math.round (this.balances.ETH.balance*10000) / 10000;
+                    }
+                });
+                var p2 = this.wizContract.methods.balanceOf(this.metamaskAddress).call()
+                    .then((balance) => {
+                        this.balances.WIZ.balance = this.web3.utils.fromWei(balance, "ether");
+                        this.balances.WIZ.balanceRound = Math.round (this.balances.WIZ.balance*10) / 10;
+                    })
+                    .catch((err) => {
+                        this.balances.WIZ.balance = '?';
+                        console.log('---- error ------');
+                        console.log(err);
+                    });
+                var p3 = this.wizContract.methods.allowance(this.metamaskAddress, this.refundContract.options.address).call()
+                    .then((balance) => {
+                        this.balances.WIZ_approved.balance = this.web3.utils.fromWei(balance, "ether");
+                        this.balances.WIZ_approved.balanceRound = Math.round (this.balances.WIZ_approved.balance*10) / 10;
+                    })
+                    .catch((err) => {
+                        this.balances.WIZ_approved.balance = '?';
+                        console.log('---- error ------');
+                        console.log(err);
+                    });
+                var p4 = this.web3.eth.getGasPrice().then(
+                    (gasPrice) => {
+                        if (!this.approveSubmited && !this.refundSubmited) {
+                            this.gasPriceGwei = Math.round(this.web3.utils.fromWei(gasPrice, 'gwei'));
+                            for (var m in this.$refs) {
+                                this.$refs[m].gasPriceGwei = this.gasPriceGwei;
+                            }
+                        }
+                    }
+                ).catch((err) => {
+                    console.log(err);
+                });
+                var p5 = this.wizContract.methods.approve(this.refundContract.options.address,
+                    1).estimateGas({from: this.metamaskAddress}).then((gas)=>{
+                        this.approveEstimatedGas = gas + 1000;
+                        console.log(gas);
+                    })
+                .catch((err) => {
+                });
+                var p6 = fetch('/etherscan/gas.json'
+                ).then(data => {
+                    return data.json();
+                }).then(json => {
+                    if (json.ethprice.message == "OK") {
+                        this.etherscanStats.ethprice = json.ethprice;
+                    }
+                    if (json.oracle.message == "OK") {
+                        this.etherscanStats.oracle = json.oracle;
+                    }
+                });
+                var p7 = this.refundContract.methods.getBurntAmountByAddress(this.metamaskAddress).call()
+                    .then((balance) => {
+                        this.burntByAddress = Math.round (this.balances.WIZ_approved.balance * 100 / 10**18 )/ 100;
+                    })
+                    .catch((err) => {
+                        console.log('---- error ------');
+                        console.log(err);
+                    });
+                //getCurrentPhaseIndex
+                var p8 = this.refundContract.methods.getCurrentPhaseIndex().call()
+                    .then((indx) => {
+                        this.refundPhase = indx;
+                    })
+                    .catch((err) => {
+                        console.log('---- error ------');
+                        console.log(err);
+                    });
+                //getNumberOfParticipants
+
+                Promise.all([p1, p2, p3, p4, p5, p6, p7, p8]).then(()=>{
+                    this.reloadingBalances = false;
+                    console.log('finished all refresh');
+                }).catch(() => {
+                    this.reloadingBalances = false;
+                    console.log('finished all refresh with errors');
+                });
+            },
+            sendApprove() {
+                // localStorage.getItem('lastApproveTx');
+                // localStorage.setItem('lastApproveTx', tx);
+                console.log('clicked unlock');
+                this.approveSubmited = true;
+                this.approveTimedout = false;
+                this.approveTransactionHash = null;
+                this.approveErrorHide = true;
+                this.approveSuccessHide = true;
+                this.approveWarningHide = true;
+                setTimeout(() => {
+                    if (this.approveSubmited) {
+                        this.approveTimedout = true;
+                        this.approveWarningHide = false;
+                    }
+                }, 5 * 1000);
+                this.wizContract.methods.approve(this.refundContract.options.address, this.web3.utils.toWei(this.tokensToUnlock.toString(), 'ether')).send({
+                    from: this.metamaskAddress,
+                    gasPrice: this.web3.utils.toWei(this.gasPriceGwei.toString(), 'gwei'),
+                    gas: this.approveEstimatedGas,
+                    value: '0'
+                })
+                    .on('transactionHash', (hash) => {
+                        this.approveTransactionHash = hash;
+                        console.log('transactionHash');
+                        console.log(hash);
+                    })
+                    .on('confirmation', (confirmationNumber, receipt) => {
+                        console.log('confirmation');
+                        console.log(confirmationNumber, receipt);
+                        this.approveSubmited = false;
+                        this.approveTimedout = false;
+                        this.approveTransactionHash = null;
+                        this.approveSuccessHide = false;
+                    })
+                    .on('receipt', (receipt) => {
+                        console.log('receipt');
+                        console.log(receipt);
+                    })
+                    .on('error', (error) => {
+                        console.log('error');
+                        console.log(error);
+                        this.approveSubmited = false;
+                        this.approveTimedout = false;
+                        this.approveTransactionHash = null;
+                        this.approveErrorHide = false;
+                        this.approveErrorMessage = error.toString();
+
+                    }); // If there's an out of gas error the second parameter is the receipt
+            },
+            advancedApprove(){
+
+            }
+        }
+
+    });
+
+  </script>
+</body>
+
+
+</html>
