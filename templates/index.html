@@ -297,6 +297,13 @@
                                     v-show="metamaskAddress != null && menuItems[selectedItem].slug == 'timeline'"
                             >
                                 <div>
+                                    <h1>WIZ Refund App</h1>
+
+                                    <p>Use this app to swap your WIZ for ETH. More info <a href="https://crowdwiz.smirnov.com/">here</a>.</p>
+                                    <p>I took a few days to experiment with Web3 and Veutifyjs, so this app just a side
+                                        effect of my desire to research new technologies. If it doesn't work, just use
+                                        the good old <a href="https://crowdwiz.smirnov.com/round-a-instructions/">etherscan.</a></p>
+
                                     <h2>Timeline</h2>
                                     <p>The refund is done in stages.</p>
                                     <p></p>
@@ -398,7 +405,7 @@
                                         tooltip="This form will unlock the WIZ tokens for the refund contract to access them."
                                         gas="64000"
                                         button="Unlock WIZ"
-                                        :disable="metamaskAddress === null || balances.WIZ.balance == 0 || balances.WIZ.balance == balances.WIZ_approved.balance || reloadingBalances "
+                                        :disable="metamaskAddress === null || balances.WIZ.balance == 0 || balances.WIZ.balance == balances.WIZ_approved.balance || reloadingBalances || refundPhase != 1"
                                         ref="approve"
                                         name="approve"
                                 >
