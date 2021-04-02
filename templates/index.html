@@ -429,7 +429,6 @@
                                             <v-text-field
                                                 type="number"
                                                 v-model="tokensToUnlock"
-                                                :disabled="contractMethods.approve.disabled"
                                             >
                                             </v-text-field>
                                         </v-col>
@@ -507,6 +506,36 @@
   <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
   <script>
+
+    /**
+     * Translates seconds into human readable format of seconds, minutes, hours, days, and years
+     *
+     * @param  {number} seconds The number of seconds to be processed
+     * @return {string}         The phrase describing the the amount of time
+     */
+    function forHumans ( seconds ) {
+        var levels = [
+            [Math.floor(seconds / 31536000), 'yrs'],
+            [Math.floor((seconds % 31536000) / 86400), 'days'],
+            [Math.floor(((seconds % 31536000) % 86400) / 3600), 'hrs'],
+            [Math.floor((((seconds % 31536000) % 86400) % 3600) / 60), 'mins'],
+        ];
+        if (seconds < 10) {
+            return "Just now"
+        } else if (seconds < 60) {
+            levels.push([(((seconds % 31536000) % 86400) % 3600) % 60, 'seconds'])
+        }
+        var returntext = '';
+
+        for (var i = 0, max = levels.length; i < max; i++) {
+            if ( levels[i][0] === 0 ) continue;
+            returntext += ' ' + levels[i][0] + ' ' + (levels[i][0] === 1 ? levels[i][1].substr(0, levels[i][1].length-1): levels[i][1]);
+        };
+
+        return returntext.trim() + ' ago';
+    }
+
+
     var baseContractForm = {
         data: function () {
             return {
@@ -520,7 +549,25 @@
                 showPendings: false,
                 showSuccess: false,
                 showError: false,
+                showTransactions: false,
                 activeTransactions: {},
+                timer: setInterval(() => {
+                    var latest = null;
+                    for ( tx in this.activeTransactions) {
+                        if (this.activeTransactions[tx].hasOwnProperty('started')) {
+                            this.activeTransactions[tx].elapsed = forHumans(Math.floor((Date.now() - this.activeTransactions[tx].started)/1000 ));
+                        }
+                        if (this.activeTransactions[tx].started > latest || this.activeTransactions[tx].started === null) {
+                            latest = this.activeTransactions[tx].started;
+                        }
+                    }
+                    if (Object.keys(this.activeTransactions).length > 0 ) {
+                        this.$forceUpdate();
+                    }
+                    if ((Date.now() - latest)/ 1000 > 10 && this.submitted) {
+                        this.showEditGas = true;
+                    }
+                }, 7000),
             }
         },
         props: ['title', 'tooltip', 'gas', 'disable', 'button', 'name'],
@@ -573,6 +620,9 @@
                             }
                         });
                     },
+                    openExplorer: function(hash) {
+                        window.open('https://' + this.$root.etherscan[this.$root.networkVersion] + '/tx/' + hash, '_blank');
+                    },
                     transact: function() {
                         this.submitted = true;
                         this.showSuccess = false;
@@ -588,6 +638,9 @@
                         this.$root.web3.eth.sendTransaction(tx)
                             .on('transactionHash', (hash) => {
                                 tx.transactionHash = hash;
+                                tx.started = Date.now();
+                                tx.gasPriceHuman = 'Gas Price: ' + this.$root.web3.utils.fromWei(tx.gasPrice.toString(), 'gwei').toString() + ' Gwei';
+                                this.showTransactions = true;
                                 this.activeTransactions[hash] = tx;
                                 console.log('transactionHash');
                                 console.log(this.activeTransactions[hash]);
@@ -598,6 +651,9 @@
                                     if (receipt.status) {
                                         this.showSuccess = true;
                                         this.$root.checkBalances();
+                                        this.confirmedHash = receipt.transactionHash;
+                                    } else {
+                                        this.confirmedHash = null;
                                     }
                                     this.submitted = false;
                                 }
@@ -611,65 +667,37 @@
                                 console.log(this.activeTransactions[receipt.transactionHash]);
                             })
                             .on('error', (error, receipt) => {
-                                this.submitted = false;
                                 this.activeTransactions[tx.transactionHash].error = error;
+                                bject.assign(this.activeTransactions[receipt.transactionHash], receipt);
+                                var confirmed = false;
+                                var pendings = false;
+                                for (item in this.activeTransactions) {
+                                    if (this.activeTransactions[item].status) {
+                                        confirmed = true;
+                                    } else if (this.activeTransactions[item].hasOwnProperty('status')) {
+                                        pendings = true;
+                                    }
+                                }
+                                if (!confirmed && !pendings) {
+                                    this.confirmedHash = null;
+                                    this.showError = true;
+                                    this.submitted = false;
+                                }
                                 console.log('error');
                                 console.log(error);
                                 console.log(receipt);
+                            })
+                            .catch((e) => {
+                                if (e.code === 4001 || e.code === -32603) {
+                                    this.activeTransactions = {};
+                                    this.submitted = false;
+                                    this.showError = true;
+                                    this.errorMessage = e.message;
+                                    console.log('error cought');
+                                    console.log(e);
+                                }
                             });
-
-                        console.log(tx);
                     },
-                    sendTransaction: function() {
-                        // localStorage.getItem('lastApproveTx');
-                        // localStorage.setItem('lastApproveTx', tx);
-                        console.log('clicked unlock');
-                        this.approveSubmited = true;
-                        this.approveTimedout = false;
-                        this.approveTransactionHash = null;
-                        this.approveErrorHide = true;
-                        this.approveSuccessHide = true;
-                        this.approveWarningHide = true;
-                        setTimeout(() => {
-                            if (this.approveSubmited) {
-                                this.approveTimedout = true;
-                                this.approveWarningHide = false;
-                            }
-                        }, 5 * 1000);
-                        this.wizContract.methods.approve(this.refundContract.options.address, this.web3.utils.toWei(this.tokensToUnlock.toString(), 'ether')).send({
-                            from: this.metamaskAddress,
-                            gasPrice: this.web3.utils.toWei(this.gasPriceGwei.toString(), 'gwei'),
-                            gas: this.approveEstimatedGas,
-                            value: '0'
-                        })
-                            .on('transactionHash', (hash) => {
-                                this.approveTransactionHash = hash;
-                                console.log('transactionHash');
-                                console.log(hash);
-                            })
-                            .on('confirmation', (confirmationNumber, receipt) => {
-                                console.log('confirmation');
-                                console.log(confirmationNumber, receipt);
-                                this.approveSubmited = false;
-                                this.approveTimedout = false;
-                                this.approveTransactionHash = null;
-                                this.approveSuccessHide = false;
-                            })
-                            .on('receipt', (receipt) => {
-                                console.log('receipt');
-                                console.log(receipt);
-                            })
-                            .on('error', (error) => {
-                                console.log('error');
-                                console.log(error);
-                                this.approveSubmited = false;
-                                this.approveTimedout = false;
-                                this.approveTransactionHash = null;
-                                this.approveErrorHide = false;
-                                this.approveErrorMessage = error.toString();
-
-                            }); // If there's an out of gas error the second parameter is the receipt
-                    }
         },
         template: `
             <v-card
@@ -699,20 +727,84 @@
                                                         slot="icon"
                                                         size="36"
                                                 >
-                                                    mdi-check-circle-outline
+                                                  mdi-check-circle-outline
                                                 </v-icon>
-                                                Congrats! The transaction was confirmed.
-                                                <template>
+                                                Transaction confirmed.
+                                                <template v-slot:actions>
+
                                                     <v-btn
                                                             color="primary"
                                                             icon
-                                                            @click="showSuccess=false; submitted=false"
+                                                            @click="showSuccess=false; submitted=false; showTransactions=false; activeTransactions={}"
                                                     >
-                                                              <v-icon dark>mdi-close</v-icon>
+                                                       <v-icon dark>mdi-close</v-icon>
                                                     </v-btn>
                                                 </template>
                                             </v-banner>
                                         </template>
+                                        <template>
+                                            <v-banner
+                                                    single-line
+                                                    color="error"
+                                                    transition="v-slide-y-transition"
+                                                    v-show="showError"
+                                            >
+                                                <v-icon
+                                                        slot="icon"
+                                                        size="36"
+                                                >
+                                                  mdi-alert-outline
+                                                </v-icon>
+                                                Transaction failed.
+                                                <template v-slot:actions>
+
+                                                    <v-btn
+                                                            color="primary"
+                                                            icon
+                                                            @click="showError=false; submitted=false; showTransactions=false; activeTransactions={}"
+                                                    >
+                                                       <v-icon dark>mdi-close</v-icon>
+                                                    </v-btn>
+                                                </template>
+                                            </v-banner>
+                                        </template>
+
+    <v-list two-line v-show="showTransactions">
+      <v-list-item-group>
+        <template v-for="(tx, index) in activeTransactions": key="tx.transactionHash">
+              <v-expand-transition>
+
+          <v-list-item
+            @click="openExplorer(tx.transactionHash);"
+          >
+            <template>
+              <v-list-item-content>
+                <v-list-item-title v-text="tx.transactionHash"
+
+                ></v-list-item-title>
+
+                <v-list-item-subtitle
+                  class="text--primary"
+                  v-text="tx.gasPriceHuman"
+                ></v-list-item-subtitle>
+
+              </v-list-item-content>
+
+              <v-list-item-action>
+                <v-icon v-show="tx.status===false" color="red">mdi-alert-circle-outline</v-icon>
+                <v-icon v-show="tx.status===true"  color="green" >mdi-check</v-icon>
+                <v-progress-circular :size="20" :width="2" indeterminate v-show="!tx.hasOwnProperty('status')"></v-progress-circular>
+                <v-list-item-action-text v-text="tx.elapsed" :key="tx.elapsed"></v-list-item-action-text>
+              </v-list-item-action>
+            </template>
+          </v-list-item>
+      </v-expand-transition>
+
+        </template>
+      </v-list-item-group>
+    </v-list>
+
+
 
                 <v-container
                 >
@@ -815,7 +907,8 @@
                                         <span>{{ button }}</span>
                                     </v-btn>
                                 <v-btn
-                                    class="mr-4" type="submit" @click="sendApprove()" v-show="submitted == true"
+                                    class="mr-4" type="submit" @click="sendApprove()"
+                                    v-show="showEditGas"
                                 >
                                     <span>Update gas</span>
                                 </v-btn>
@@ -919,7 +1012,8 @@
           },
           etherscan: {
               0x01: 'etherscan.io',
-              0x03: 'ropsten.etherscan.io'
+              0x03: 'ropsten.etherscan.io',
+              0x38: 'bscscan.com'
           },
           contractMethods: {
                 approve: {
@@ -937,8 +1031,8 @@
                             return root.web3.utils.toChecksumAddress('0x3afac79af35865d40d74173a1ffeede947966151');
                         }
                     },
-                    disabled(root) {
-                        return root.$refs.approve.submitted;
+                    disabled() {
+                        return vue.$refs.approve.submitted;
                     },
                     data: {}
                 },
